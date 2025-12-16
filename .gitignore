@@ -1,0 +1,3 @@
+# ігнорування секретів та node_modules
+.env
+node_modules/
