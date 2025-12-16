@@ -197,7 +197,7 @@ editPolygonBtn.onclick=()=>{
 };
 
 /* Load polygons */
-fetch('https://github.com/height2101stu/kalnibolota/tree/main/public/polygons.json').then(r=>r.json()).then(d=>{
+fetch('github.com/height2101stu/kalnibolota/blob/main/public/polygons.json').then(r=>r.json()).then(d=>{
   L.geoJSON(d,{style:stylePolygon,onEachFeature:(f,l)=>{
     editableLayer.addLayer(l);
     l.on('click',()=>{
@@ -257,7 +257,7 @@ closeInfo.onclick=()=>{
 
 /* Save all polygons to server */
 function saveAll(){
-  fetch('https://github.com/height2101stu/kalnibolota/tree/main/public/polygons',{
+  fetch('github.com/height2101stu/kalnibolota/blob/main/public/polygons.json',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(editableLayer.toGeoJSON())
