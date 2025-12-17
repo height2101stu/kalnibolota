@@ -257,7 +257,7 @@ closeInfo.onclick=()=>{
 
 /* Save all polygons to server */
 function saveAll(){
-  fetch('/polygons.json',{
+  fetch('/polygons',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(editableLayer.toGeoJSON())

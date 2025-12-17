@@ -3,26 +3,25 @@ const express = require('express');
 const fetch = require('node-fetch'); // npm install node-fetch@2
 const app = express();
 
-const GIT_TOKEN = process.env.GIT_TOKEN;
-const GIT_REPO = process.env.GIT_REPO;
+const GIT_TOKEN = process.env.GIT_TOKEN;      // Твій GitHub PAT
+const GIT_REPO = process.env.GIT_REPO;        // username/repo
 const GIT_BRANCH = process.env.GIT_BRANCH || 'main';
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
-// --- Функція пушу на GitHub ---
+// Функція оновлення файлу на GitHub
 async function updateFileOnGitHub(filename, content) {
   try {
     const apiUrl = `https://api.github.com/repos/${GIT_REPO}/contents/public/${filename}`;
-
-    // Отримуємо SHA файлу (якщо існує)
+    
+    // Отримати SHA файлу (якщо існує)
     const getResp = await fetch(apiUrl, {
       headers: { Authorization: `token ${GIT_TOKEN}`, Accept: 'application/vnd.github+json' }
     });
     const getData = await getResp.json();
     const sha = getData.sha;
 
-    // Формуємо тіло для commit
     const body = {
       message: "Автоматичне оновлення полігонів",
       content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
@@ -43,26 +42,16 @@ async function updateFileOnGitHub(filename, content) {
   }
 }
 
-// --- POST: збереження полігонів ---
+// POST ендпоінт для збереження полігонів
 app.post('/polygons', async (req, res) => {
   const polygons = req.body;
   await updateFileOnGitHub('polygons.json', polygons);
   res.send('Полігони збережено у GitHub ✅');
 });
 
-// --- GET: головна сторінка ---
+// GET головної сторінки
 app.get('/', (req, res) => res.sendFile(__dirname + '/public/index.html'));
 
-// --- GET: полігони ---
-app.get('/polygons.json', async (req, res) => {
-  try {
-    const resp = await fetch(`https://raw.githubusercontent.com/${GIT_REPO}/${GIT_BRANCH}/public/polygons.json`);
-    const data = await resp.json();
-    res.json(data);
-  } catch (err) {
-    res.json({ type: "FeatureCollection", features: [] });
-  }
-});
-
+// Запуск сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
