@@ -11,25 +11,40 @@
 <style>
 :root { --btn-base:#5aa0e5; --btn-hover:#3f7fc1; --btn-active:#f59e0b; }
 html,body,#map{width:100%;height:100%;margin:0;}
-#infoPanel{position:absolute;top:15px;right:15px;width:360px;background:#fff;padding:14px;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,0.2);font-size:14px;z-index:1000;display:none;}
+
+#map.coords-mode{ cursor: crosshair !important; }
+#map.coords-mode *{ cursor: crosshair !important; }
+
+#infoPanel{position:absolute;top:15px;right:15px;width:360px;background:#fff;padding:14px;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,.2);font-size:14px;z-index:1000;display:none;}
 #infoPanel.visible{display:block;}
 #infoHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-#infoHeader b{font-size:15px;}
 #closeInfo{border:none;background:#ef4444;color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;}
+
 #infoContent table{width:100%;border-collapse:separate;border-spacing:0 6px;}
-#infoContent td:first-child{width:140px;font-weight:500;}
+#infoContent td:first-child{width:150px;font-weight:500;}
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
 td.value.active{background:#dbeafe;}
-td button.rowEditBtn{margin-left:4px;vertical-align:middle;}
-button,.rowEditBtn{border:none;border-radius:6px;padding:6px 10px;background:var(--btn-base);color:#fff;cursor:pointer;transition:background 0.2s;font-size:13px;display:flex;align-items:center;justify-content:center;}
+
+button,.rowEditBtn{
+  border:none;border-radius:6px;padding:6px 10px;
+  background:var(--btn-base);color:#fff;
+  cursor:pointer;transition:.2s;font-size:13px;
+}
 button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
 button.active,.rowEditBtn.active{background:var(--btn-active);}
-#editControl,#searchControls{position:absolute;left:15px;z-index:1000;}
-#searchControls{top:15px;display:flex;gap:5px;}
-#editControl{top:60px;display:flex;flex-direction:column;gap:6px;}
-#coordsControl{position:absolute;bottom:15px;left:15px;z-index:1000;}
-#layersControl{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:6px;}
-.leaflet-draw .leaflet-marker-icon{border-radius:50%;width:12px !important;height:12px !important;margin-left:-6px;margin-top:-6px;border:2px solid #4f46e5;background:#fff;}
+
+#searchControls,#editControl,#coordsControl,#layersControl{
+  position:absolute;z-index:1000;
+}
+#searchControls{top:15px;left:15px;display:flex;gap:5px;}
+#editControl{top:60px;left:15px;display:flex;flex-direction:column;gap:6px;}
+#coordsControl{bottom:15px;left:15px;}
+#layersControl{bottom:15px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
+
+.leaflet-draw .leaflet-marker-icon{
+  border-radius:50%;width:12px !important;height:12px !important;
+  margin-left:-6px;margin-top:-6px;border:2px solid #4f46e5;background:#fff;
+}
 </style>
 </head>
 
@@ -70,68 +85,44 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 <script src="https://unpkg.com/leaflet-geometryutil@0.10.1/src/leaflet.geometryutil.js"></script>
 
 <script>
-const map = L.map('map').setView([48.752963,30.989256],15);
+/* ---------------- MAP ---------------- */
+const map=L.map('map').setView([48.752963,30.989256],15);
 map.zoomControl.remove();
-L.control.zoom({ position:'bottomright' }).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
 
-/* Base layers */
-const gkkLayer = L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png').addTo(map);
-const esriLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
-const googleLayer = L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}');
+const gkkLayer=L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png').addTo(map);
+const esriLayer=L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+const googleLayer=L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}');
 
-const editableLayer = new L.FeatureGroup().addTo(map);
+const editableLayer=new L.FeatureGroup().addTo(map);
 
-/* Polygon style */
-function stylePolygon(){ return { color:'#3388ff', weight:1.3, fillColor:'#3388ff', fillOpacity:0.12 }; }
-function highlightPolygon(l){ l.setStyle({ fillColor:'#ffe666', fillOpacity:0.45 }); }
-function resetPolygon(l){ l.setStyle(stylePolygon()); }
+/* ---------------- STYLES ---------------- */
+const stylePolygon=()=>({color:'#3388ff',weight:1.3,fillColor:'#3388ff',fillOpacity:.12});
+const highlightPolygon=l=>l.setStyle({fillColor:'#ffe666',fillOpacity:.45});
+const resetPolygon=l=>l.setStyle(stylePolygon());
 
-/* Attributes */
+/* ---------------- ATTRIBUTES ---------------- */
 const keyNames={
-  Cadnum:'Кадастровий номер', Area:'Площа за документами (га)', area_2:'Площа в натурі (га)',
-  purpose:'Цільове призначення', Qwner:'Власник', Num_Ovner:'К-сть власників', tenant:'Землекористувач',
-  St_reg:'Дата реєстрації', Street:'Вулиця', Build_num:'№ будинку', note:'Примітка'
+  Cadnum:'Кадастровий номер',Area:'Площа за документами (га)',area_2:'Площа в натурі (га)',
+  purpose:'Цільове призначення',Qwner:'Власник',Num_Ovner:'К-сть власників',
+  tenant:'Землекористувач',St_reg:'Дата реєстрації',
+  Street:'Вулиця',Build_num:'№ будинку',note:'Примітка'
 };
 
 let activeLayer=null;
-let areaInteractive=false;
+let activeAttrEdit=null;
 
-const infoPanel=document.getElementById('infoPanel');
-const infoContent=document.getElementById('infoContent');
-const addPolygonBtn=document.getElementById('addPolygonBtn');
-const editPolygonBtn=document.getElementById('editPolygonBtn');
-const deletePolygonBtn=document.getElementById('deletePolygonBtn');
-const searchInput=document.getElementById('searchInput');
-const resetSearch=document.getElementById('resetSearch');
-const coordsModeBtn=document.getElementById('coordsModeBtn');
-const closeInfo=document.getElementById('closeInfo');
-const gkkBtn=document.getElementById('gkkBtn');
-const esriBtn=document.getElementById('esriBtn');
-const googleBtn=document.getElementById('googleBtn');
-
-/* Toggle layers */
-function toggleLayer(name){
-  gkkLayer.remove(); esriLayer.remove(); googleLayer.remove();
-  document.querySelectorAll('#layersControl button').forEach(b=>b.classList.remove('active'));
-  if(name==='gkk'){ gkkLayer.addTo(map); gkkBtn.classList.add('active'); }
-  if(name==='esri'){ esriLayer.addTo(map); esriBtn.classList.add('active'); }
-  if(name==='google'){ googleLayer.addTo(map); googleBtn.classList.add('active'); }
-}
-
-gkkBtn.onclick = ()=>toggleLayer('gkk');
-esriBtn.onclick = ()=>toggleLayer('esri');
-googleBtn.onclick = ()=>toggleLayer('google');
-
-/* Info panel & editing */
-function generateCadnum(){ return `3523681200:${Math.floor(Math.random()*100000000).toString().padStart(8,'0')}`; }
-
+/* ---------------- INFO PANEL ---------------- */
 function showInfo(layer){
   activeLayer=layer;
   let html='<table>';
-  for(let k in keyNames){
-    let val=layer.feature.properties[k]||'';
-    let editable = k!=='Cadnum' && (k!=='area_2' || areaInteractive);
-    html+=`<tr><td>${keyNames[k]}</td><td class="value" contenteditable="false" data-key="${k}">${val}</td><td>${editable?editBtnSvg(k):''}</td></tr>`;
+  for(const k in keyNames){
+    const v=layer.feature.properties[k]||'';
+    html+=`<tr>
+      <td>${keyNames[k]}</td>
+      <td class="value" data-key="${k}">${v}</td>
+      <td>${k!=='Cadnum'?`<button class="rowEditBtn" data-key="${k}">✎</button>`:''}</td>
+    </tr>`;
   }
   html+='</table>';
   infoContent.innerHTML=html;
@@ -140,63 +131,50 @@ function showInfo(layer){
   document.querySelectorAll('.rowEditBtn').forEach(btn=>{
     btn.onclick=()=>{
       const key=btn.dataset.key;
-      document.querySelectorAll('.value').forEach(td=>{td.contentEditable=false; td.classList.remove('active');});
-      document.querySelectorAll('.rowEditBtn').forEach(b=>b.classList.remove('active'));
       const td=document.querySelector(`td[data-key="${key}"]`);
-      td.contentEditable=true; td.classList.add('active'); btn.classList.add('active');
+
+      if(activeAttrEdit && activeAttrEdit.btn===btn){
+        finishAttrEdit(); return;
+      }
+      if(activeAttrEdit) finishAttrEdit();
+
+      td.contentEditable=true;
+      td.classList.add('active');
+      btn.classList.add('active');
       td.focus();
-      td.onblur=()=>{
-        layer.feature.properties[key]=td.innerText;
-        td.classList.remove('active'); btn.classList.remove('active');
-        saveAll();
-      };
+
+      activeAttrEdit={td,btn,key};
+      td.onblur=finishAttrEdit;
     };
   });
 }
 
-function editBtnSvg(key){ return `<button class="rowEditBtn" data-key="${key}">✎</button>`; }
+function finishAttrEdit(){
+  if(!activeAttrEdit) return;
+  const {td,btn,key}=activeAttrEdit;
+  td.contentEditable=false;
+  td.classList.remove('active');
+  btn.classList.remove('active');
+  activeLayer.feature.properties[key]=td.innerText.trim();
+  saveAll();
+  activeAttrEdit=null;
+}
 
-/* Draw & edit polygons */
+/* ---------------- DRAW ---------------- */
 const drawControl=new L.Draw.Polygon(map,{allowIntersection:false,shapeOptions:stylePolygon()});
 addPolygonBtn.onclick=()=>drawControl._enabled?drawControl.disable():drawControl.enable();
 
 map.on(L.Draw.Event.CREATED,e=>{
   const l=e.layer;
   const ll=l.getLatLngs()[0];
-  l.feature={type:'Feature',properties:{Cadnum:generateCadnum(),Area:0,area_2:+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4)},geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}}; 
-  l.setStyle(stylePolygon());
+  l.feature={type:'Feature',properties:{Cadnum:'3523681200:'+Date.now(),area_2:+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4)},geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}}
   editableLayer.addLayer(l);
   highlightPolygon(l);
-  activeLayer=l;
-  areaInteractive=true;
   showInfo(l);
-  l.editing.enable();
-  editPolygonBtn.classList.add('active');
   saveAll();
 });
 
-editPolygonBtn.onclick=()=>{
-  if(!activeLayer) return;
-  if(!editPolygonBtn.classList.contains('active')){
-    activeLayer.editing.enable();
-    areaInteractive=true;
-    showInfo(activeLayer);
-    editPolygonBtn.classList.add('active');
-  }else{
-    activeLayer.editing.disable();
-    const ll=activeLayer.getLatLngs()[0];
-    activeLayer.feature.properties.area_2=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
-    areaInteractive=false;
-    showInfo(activeLayer);
-    editPolygonBtn.classList.remove('active');
-    editableLayer.eachLayer(resetPolygon);
-    infoPanel.classList.remove('visible');
-    activeLayer=null;
-    saveAll();
-  }
-};
-
-/* Load polygons */
+/* ---------------- LOAD ---------------- */
 fetch('/polygons.json').then(r=>r.json()).then(d=>{
   L.geoJSON(d,{style:stylePolygon,onEachFeature:(f,l)=>{
     editableLayer.addLayer(l);
@@ -208,28 +186,15 @@ fetch('/polygons.json').then(r=>r.json()).then(d=>{
   }});
 });
 
-/* Search */
-searchInput.oninput=()=>{
-  const q=searchInput.value.toLowerCase().trim();
-  let bounds=L.latLngBounds();
-  if(!q){ editableLayer.eachLayer(resetPolygon); return; }
-  editableLayer.eachLayer(l=>{
-    const m=Object.values(l.feature.properties).some(v=>v&&v.toString().toLowerCase().includes(q));
-    if(m){ highlightPolygon(l); if(l.getBounds) bounds.extend(l.getBounds()); }
-    else resetPolygon(l);
-  });
-  if(bounds.isValid()){ map.fitBounds(bounds.pad(0.2)); if(map.getZoom()>18) map.setZoom(18); }
-};
-resetSearch.onclick=()=>{ searchInput.value=''; editableLayer.eachLayer(resetPolygon); };
-
-/* Coordinates mode */
-let coordsMode=false; let tempMarker=null;
+/* ---------------- COORDS MODE ---------------- */
+let coordsMode=false,tempMarker=null;
 coordsModeBtn.onclick=()=>{
   coordsMode=!coordsMode;
   coordsModeBtn.classList.toggle('active',coordsMode);
-  map.getContainer().style.cursor=coordsMode?'crosshair':'';
-  if(!coordsMode && tempMarker){ map.removeLayer(tempMarker); tempMarker=null; infoPanel.classList.remove('visible'); }
+  map.getContainer().classList.toggle('coords-mode',coordsMode);
+  if(!coordsMode && tempMarker){map.removeLayer(tempMarker);tempMarker=null;}
 };
+
 map.on('click',e=>{
   if(!coordsMode) return;
   if(tempMarker) map.removeLayer(tempMarker);
@@ -238,7 +203,7 @@ map.on('click',e=>{
   infoPanel.classList.add('visible');
 });
 
-/* Delete polygon */
+/* ---------------- DELETE ---------------- */
 deletePolygonBtn.onclick=()=>{
   if(activeLayer && confirm('Видалити полігон?')){
     editableLayer.removeLayer(activeLayer);
@@ -248,14 +213,7 @@ deletePolygonBtn.onclick=()=>{
   }
 };
 
-/* Close info panel */
-closeInfo.onclick=()=>{
-  infoPanel.classList.remove('visible');
-  editableLayer.eachLayer(resetPolygon);
-  activeLayer=null;
-};
-
-/* Save all polygons to server */
+/* ---------------- SAVE ---------------- */
 function saveAll(){
   fetch('https://kalnibolota.onrender.com/polygons',{
     method:'POST',
