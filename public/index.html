@@ -30,7 +30,6 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 #coordsControl{position:absolute;bottom:15px;left:15px;z-index:1000;}
 #layersControl{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:6px;}
 .leaflet-draw .leaflet-marker-icon{border-radius:50%;width:12px !important;height:12px !important;margin-left:-6px;margin-top:-6px;border:2px solid #4f46e5;background:#fff;}
-/* курсор + */
 #map.coords-mode, #map.coords-mode * { cursor: crosshair !important; }
 </style>
 </head>
@@ -54,10 +53,10 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 </div>
 
 <div id="layersControl">
-  <button id="str_mapBtn" class="active">STR_MAP</button>  
-  <button id="gkkBtn" class=>GKK</button>
+  <button id="googleBtn" class="active">Google</button>
+  <button id="gkkBtn">GKK</button>
   <button id="esriBtn">ESRI</button>
-  <button id="googleBtn">Google</button>
+  <button id="str_mapBtn">STR_MAP</button>
 </div>
 
 <div id="infoPanel">
@@ -78,10 +77,10 @@ map.zoomControl.remove();
 L.control.zoom({ position:'bottomright' }).addTo(map);
 
 /* Base layers */
-const str_mapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const googleLayer = L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}').addTo(map);
 const gkkLayer = L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png');
 const esriLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
-const googleLayer = L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}');
+const str_mapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
 
 const editableLayer = new L.FeatureGroup().addTo(map);
 
@@ -101,6 +100,7 @@ let activeLayer=null;
 let areaInteractive=false;
 let activeEditBtn = null;
 let activeEditTd = null;
+let searchMarker=null;
 
 const infoPanel=document.getElementById('infoPanel');
 const infoContent=document.getElementById('infoContent');
@@ -120,15 +120,15 @@ const googleBtn=document.getElementById('googleBtn');
 function toggleLayer(name){
   str_mapLayer.remove(); gkkLayer.remove(); esriLayer.remove(); googleLayer.remove();
   document.querySelectorAll('#layersControl button').forEach(b=>b.classList.remove('active'));
-  if(name==='str_map'){ str_mapLayer.addTo(map); str_mapBtn.classList.add('active'); }
+  if(name==='google'){ googleLayer.addTo(map); googleBtn.classList.add('active'); }
   if(name==='gkk'){ gkkLayer.addTo(map); gkkBtn.classList.add('active'); }
   if(name==='esri'){ esriLayer.addTo(map); esriBtn.classList.add('active'); }
-  if(name==='google'){ googleLayer.addTo(map); googleBtn.classList.add('active'); }
+  if(name==='str_map'){ str_mapLayer.addTo(map); str_mapBtn.classList.add('active'); }
 }
-str_mapBtn.onclick = ()=>toggleLayer('str_map');
+googleBtn.onclick = ()=>toggleLayer('google');
 gkkBtn.onclick = ()=>toggleLayer('gkk');
 esriBtn.onclick = ()=>toggleLayer('esri');
-googleBtn.onclick = ()=>toggleLayer('google');
+str_mapBtn.onclick = ()=>toggleLayer('str_map');
 
 /* Info panel & editing */
 function generateCadnum(){ return `3523681200:${Math.floor(Math.random()*100000000).toString().padStart(8,'0')}`; }
@@ -145,7 +145,6 @@ function showInfo(layer){
   infoContent.innerHTML=html;
   infoPanel.classList.add('visible');
 
-  // інтегрована кнопка ✎ з toggle
   document.querySelectorAll('.rowEditBtn').forEach(btn=>{
     btn.onclick = () => {
       const key = btn.dataset.key;
@@ -243,9 +242,26 @@ fetch('/polygons.json').then(r=>r.json()).then(d=>{
 
 /* Search */
 searchInput.oninput=()=>{
+
   const q=searchInput.value.toLowerCase().trim();
   let bounds=L.latLngBounds();
+
+  // Перевірка координат: 48.747322,30.989218 або 48.747322 30.989218
+  const coordMatch = q.match(/^(-?\d+(\.\d+)?)\s*(?:,|\s)\s*(-?\d+(\.\d+)?)$/);
+
+  if(coordMatch){
+    const lat=parseFloat(coordMatch[1]);
+    const lng=parseFloat(coordMatch[3]);
+
+    if(searchMarker) map.removeLayer(searchMarker);
+    searchMarker = L.marker([lat,lng]).addTo(map);
+    bounds.extend([lat,lng]);
+    map.fitBounds(bounds.pad(0.2));
+    return;
+  }
+
   if(!q){ editableLayer.eachLayer(resetPolygon); return; }
+
   editableLayer.eachLayer(l=>{
     const m=Object.values(l.feature.properties).some(v=>v&&v.toString().toLowerCase().includes(q));
     if(m){ highlightPolygon(l); if(l.getBounds) bounds.extend(l.getBounds()); }
@@ -253,7 +269,11 @@ searchInput.oninput=()=>{
   });
   if(bounds.isValid()){ map.fitBounds(bounds.pad(0.2)); if(map.getZoom()>18) map.setZoom(18); }
 };
-resetSearch.onclick=()=>{ searchInput.value=''; editableLayer.eachLayer(resetPolygon); };
+resetSearch.onclick=()=>{ 
+  searchInput.value=''; 
+  editableLayer.eachLayer(resetPolygon); 
+  if(searchMarker) { map.removeLayer(searchMarker); searchMarker=null; }
+};
 
 /* Coordinates mode */
 let coordsMode=false; let tempMarker=null;
