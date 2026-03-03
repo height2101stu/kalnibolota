@@ -14,12 +14,14 @@ html,body,#map{width:100%;height:100%;margin:0;}
 #infoPanel{position:absolute;top:15px;right:15px;width:360px;background:#fff;padding:14px;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,0.2);font-size:14px;z-index:1000;display:none;}
 #infoPanel.visible{display:block;}
 #infoHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+#infoHeader b{font-size:15px;}
 #closeInfo{border:none;background:#ef4444;color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;}
 #infoContent table{width:100%;border-collapse:separate;border-spacing:0 6px;}
 #infoContent td:first-child{width:140px;font-weight:500;}
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
 td.value.active{background:#dbeafe;}
-button,.rowEditBtn{border:none;border-radius:6px;padding:6px 10px;background:var(--btn-base);color:#fff;cursor:pointer;font-size:13px;}
+td button.rowEditBtn{margin-left:4px;vertical-align:middle;}
+button,.rowEditBtn{border:none;border-radius:6px;padding:6px 10px;background:var(--btn-base);color:#fff;cursor:pointer;transition:background 0.2s;font-size:13px;display:flex;align-items:center;justify-content:center;}
 button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
 button.active,.rowEditBtn.active{background:var(--btn-active);}
 #editControl,#searchControls{position:absolute;left:15px;z-index:1000;}
@@ -27,6 +29,7 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 #editControl{top:60px;display:flex;flex-direction:column;gap:6px;}
 #coordsControl{position:absolute;bottom:15px;left:15px;z-index:1000;}
 #layersControl{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:6px;}
+.leaflet-draw .leaflet-marker-icon{border-radius:50%;width:12px !important;height:12px !important;margin-left:-6px;margin-top:-6px;border:2px solid #4f46e5;background:#fff;}
 #map.coords-mode, #map.coords-mode * { cursor: crosshair !important; }
 </style>
 </head>
@@ -51,8 +54,9 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 
 <div id="layersControl">
   <button id="googleBtn" class="active">Google</button>
+  <button id="gkkBtn">GKK</button>
   <button id="esriBtn">ESRI</button>
-  <button id="osmBtn">OSM</button>
+  <button id="str_mapBtn">STR_MAP</button>
 </div>
 
 <div id="infoPanel">
@@ -70,89 +74,40 @@ button.active,.rowEditBtn.active{background:var(--btn-active);}
 <script>
 
 const map = L.map('map').setView([48.680987, 31.086159],12);
+map.zoomControl.remove();
 L.control.zoom({ position:'bottomright' }).addTo(map);
 
-/* ===== БАЗОВІ ШАРИ ===== */
-
+/* Base layers */
 const googleLayer = L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}').addTo(map);
+const gkkLayer = L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png');
 const esriLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
-const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-
-function toggleLayer(layer){
-  googleLayer.remove(); esriLayer.remove(); osmLayer.remove();
-  layer.addTo(map);
-}
-
-googleBtn.onclick=()=>toggleLayer(googleLayer);
-esriBtn.onclick=()=>toggleLayer(esriLayer);
-osmBtn.onclick=()=>toggleLayer(osmLayer);
-
-/* ===== ПОЛІГОНИ ===== */
+const str_mapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
 
 const editableLayer = new L.FeatureGroup().addTo(map);
 
+/* Polygon style */
 function stylePolygon(){ return { color:'#3388ff', weight:1.3, fillColor:'#3388ff', fillOpacity:0.12 }; }
 function highlightPolygon(l){ l.setStyle({ fillColor:'#ffe666', fillOpacity:0.45 }); }
 function resetPolygon(l){ l.setStyle(stylePolygon()); }
 
-/* ===== ЗАВАНТАЖЕННЯ ===== */
-
-fetch('/polygons.json')
-.then(r=>r.json())
-.then(d=>{
-  if(!d || !d.features) return;
-  L.geoJSON(d,{
-    style:stylePolygon,
-    onEachFeature:(f,l)=>{
-      editableLayer.addLayer(l);
-      l.on('click',()=>{
-        editableLayer.eachLayer(resetPolygon);
-        highlightPolygon(l);
-        showInfo(l);
-      });
-    }
-  });
-})
-.catch(e=>console.error(e));
-
-/* ===== МАЛЮВАННЯ ===== */
-
-const drawControl = new L.Draw.Polygon(map,{allowIntersection:false,shapeOptions:stylePolygon()});
-document.getElementById('addPolygonBtn').onclick=()=>drawControl.enable();
-
-map.on(L.Draw.Event.CREATED,e=>{
-  const l=e.layer;
-  const ll=l.getLatLngs()[0];
-  l.feature={type:'Feature',properties:{
-    area_2:+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4)
-  }};
-  l.setStyle(stylePolygon());
-  editableLayer.addLayer(l);
-  saveAll();
+/* Load polygons */
+fetch('/polygons.json').then(r=>r.json()).then(d=>{
+  L.geoJSON(d,{style:stylePolygon,onEachFeature:(f,l)=>{
+    editableLayer.addLayer(l);
+    l.on('click',()=>{
+      editableLayer.eachLayer(resetPolygon);
+      highlightPolygon(l);
+    });
+  }});
 });
 
-/* ===== АВТОПЛОЩА ===== */
-
-editableLayer.on('layeradd',function(e){
-  e.layer.on('edit',function(){
-    const ll=e.layer.getLatLngs()[0];
-    e.layer.feature.properties.area_2=
-      +(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
-    saveAll();
-  });
-});
-
-/* ===== ЗБЕРЕЖЕННЯ ===== */
-
+/* Save all polygons to server */
 function saveAll(){
-  fetch('/polygons',{
+  fetch('https://kalnibolota.onrender.com/polygons',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(editableLayer.toGeoJSON())
-  })
-  .then(r=>r.json())
-  .then(()=>console.log('Збережено'))
-  .catch(e=>console.error(e));
+  });
 }
 
 </script>
