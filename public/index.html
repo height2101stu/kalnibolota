@@ -115,25 +115,15 @@ str_mapBtn.onclick=()=>toggleLayer('str_map');
 
 const editableLayer=new L.FeatureGroup().addTo(map);
 let activeLayer=null;
+let editMode=false;
 
-/* ===== КАДАСТРОВИЙ НОМЕР ===== */
+/* ДОДАТИ ГРУПУ РЕДАГУВАННЯ ДЛЯ ВСІХ */
 
-function generateCadnum(){
-let num;
-do{
-num=`3523681200:${Math.floor(Math.random()*100000000)
-.toString()
-.padStart(8,'0')}`;
-}while(isCadnumExists(num));
-return num;
-}
-function isCadnumExists(num){
-let exists=false;
-editableLayer.eachLayer(l=>{
-if(l.feature?.properties?.Cadnum===num) exists=true;
+const drawControlFull = new L.Control.Draw({
+edit:{ featureGroup: editableLayer },
+draw:false
 });
-return exists;
-}
+map.addControl(drawControlFull);
 
 /* ===== СТИЛЬ ===== */
 
@@ -163,18 +153,20 @@ addPolygonBtn.onclick=()=>drawControl.enable();
 map.on(L.Draw.Event.CREATED,e=>{
 const l=e.layer;
 const ll=l.getLatLngs()[0];
+const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+
 l.feature={
 type:'Feature',
 properties:{
-Cadnum:generateCadnum(),
-Area:'',
-area_2:+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4),
+Cadnum:`3523681200:${Date.now().toString().slice(-8)}`,
+Area:areaHa,
 purpose:'',
 owner:'',
 note:''
 },
 geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}
 };
+
 editableLayer.addLayer(l);
 selectLayer(l);
 saveAll();
@@ -194,15 +186,17 @@ showInfo(l);
 function showInfo(layer){
 const p=layer.feature.properties;
 let html='<table>';
+
 for(const k in p){
 html+=`
 <tr>
 <td>${k}</td>
-<td class="value" contenteditable="${k!=='Cadnum'}" data-key="${k}">
+<td class="value" contenteditable="${k!=='Cadnum' && k!=='Area'}" data-key="${k}">
 ${p[k]??''}
 </td>
 </tr>`;
 }
+
 html+='</table>';
 infoContent.innerHTML=html;
 infoPanel.classList.add('visible');
@@ -214,28 +208,42 @@ saveAll();
 };
 });
 }
-closeInfo.onclick=()=>infoPanel.classList.remove('visible');
 
-/* ===== РЕДАГУВАННЯ ===== */
+closeInfo.onclick=()=>{
+infoPanel.classList.remove('visible');
+editableLayer.eachLayer(l=>l.setStyle(stylePolygon()));
+activeLayer=null;
+};
+
+/* ===== РЕДАГУВАННЯ ВСІХ ===== */
 
 editPolygonBtn.onclick=()=>{
 if(!activeLayer)return;
-if(!activeLayer.editing.enabled()){
-activeLayer.editing.enable();
+
+if(!editMode){
+editableLayer.eachLayer(l=>l.editing.enable());
+editPolygonBtn.classList.add('active');
+editMode=true;
 }else{
-activeLayer.editing.disable();
+editableLayer.eachLayer(l=>l.editing.disable());
+
+if(activeLayer){
 const ll=activeLayer.getLatLngs()[0];
-activeLayer.feature.properties.area_2=
-+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+activeLayer.feature.properties.Area=areaHa;
 showInfo(activeLayer);
+}
+
 saveAll();
+editPolygonBtn.classList.remove('active');
+editMode=false;
 }
 };
 
 /* ===== ВИДАЛЕННЯ ===== */
 
 deletePolygonBtn.onclick=()=>{
-if(activeLayer){
+if(activeLayer && confirm('Видалити полігон?')){
 editableLayer.removeLayer(activeLayer);
 infoPanel.classList.remove('visible');
 activeLayer=null;
@@ -243,16 +251,7 @@ saveAll();
 }
 };
 
-/* ===== ПОШУК + RESET ===== */
-
-searchInput.oninput=e=>{
-const q=e.target.value.toLowerCase();
-editableLayer.eachLayer(l=>{
-const m=Object.values(l.feature.properties)
-.some(v=>v && v.toString().toLowerCase().includes(q));
-l.setStyle(m?{fillColor:'#22c55e',fillOpacity:0.6}:stylePolygon());
-});
-};
+/* ===== RESET ===== */
 
 resetSearch.onclick=()=>{
 searchInput.value='';
@@ -260,53 +259,6 @@ editableLayer.eachLayer(l=>l.setStyle(stylePolygon()));
 infoPanel.classList.remove('visible');
 activeLayer=null;
 };
-
-/* ===== КООРДИНАТИ ===== */
-
-let coordsMode=false;
-let coordMarker=null;
-
-coordsModeBtn.onclick=()=>{
-coordsMode=!coordsMode;
-coordsModeBtn.classList.toggle('active',coordsMode);
-map.getContainer().classList.toggle('coords-mode',coordsMode);
-if(!coordsMode && coordMarker){
-map.removeLayer(coordMarker);
-coordMarker=null;
-}
-};
-
-map.on('click',e=>{
-if(!coordsMode)return;
-
-if(coordMarker) map.removeLayer(coordMarker);
-coordMarker=L.marker(e.latlng).addTo(map);
-
-const lat=e.latlng.lat.toFixed(6);
-const lng=e.latlng.lng.toFixed(6);
-const text=`${lat}, ${lng}`;
-
-infoContent.innerHTML=`
-<table>
-<tr>
-<td>Координати</td>
-<td class="value">
-${text}
-<button id="copyCoordsBtn" class="copy-btn">📋</button>
-</td>
-</tr>
-</table>
-`;
-
-infoPanel.classList.add('visible');
-
-document.getElementById('copyCoordsBtn').onclick=()=>{
-navigator.clipboard.writeText(text);
-const btn=document.getElementById('copyCoordsBtn');
-btn.innerText='✔';
-setTimeout(()=>btn.innerText='📋',1000);
-};
-});
 
 /* ===== ЗБЕРЕЖЕННЯ ===== */
 
