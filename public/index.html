@@ -24,15 +24,14 @@ font-size:14px;z-index:1000;display:none;
 #infoContent table{width:100%;border-collapse:separate;border-spacing:0 6px;}
 #infoContent td:first-child{width:140px;font-weight:500;}
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
-td.value.active{background:#dbeafe;}
 
-button,.rowEditBtn{
+button{
 border:none;border-radius:6px;padding:6px 10px;
 background:var(--btn-base);color:#fff;
 cursor:pointer;font-size:13px;
 }
-button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
-button.active,.rowEditBtn.active{background:var(--btn-active);}
+button:hover{background:var(--btn-hover);}
+button.active{background:var(--btn-active);}
 
 #searchControls,#editControl,#coordsControl,#layersControl{
 position:absolute;z-index:1000;
@@ -43,7 +42,6 @@ position:absolute;z-index:1000;
 #layersControl{bottom:15px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
 
 #map.coords-mode, #map.coords-mode * { cursor: crosshair !important; }
-.copy-btn{margin-left:8px;padding:2px 6px;font-size:12px;}
 </style>
 </head>
 
@@ -91,7 +89,7 @@ const map=L.map('map').setView([48.680987,31.086159],12);
 map.zoomControl.remove();
 L.control.zoom({position:'bottomright'}).addTo(map);
 
-/* ===== ПІДКЛАДКИ ===== */
+/* ПІДКЛАДКИ */
 
 const googleLayer=L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}').addTo(map);
 const gkkLayer=L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png');
@@ -111,26 +109,19 @@ gkkBtn.onclick=()=>toggleLayer('gkk');
 esriBtn.onclick=()=>toggleLayer('esri');
 str_mapBtn.onclick=()=>toggleLayer('str_map');
 
-/* ===== ДАНІ ===== */
+/* ДАНІ */
 
 const editableLayer=new L.FeatureGroup().addTo(map);
 let activeLayer=null;
 let editMode=false;
+let editHandler=null;
 
-/* ДОДАТИ ГРУПУ РЕДАГУВАННЯ ДЛЯ ВСІХ */
-
-const drawControlFull = new L.Control.Draw({
-edit:{ featureGroup: editableLayer },
-draw:false
-});
-map.addControl(drawControlFull);
-
-/* ===== СТИЛЬ ===== */
+/* СТИЛЬ */
 
 function stylePolygon(){return{color:'#3388ff',fillColor:'#3388ff',fillOpacity:0.15};}
 function highlight(l){l.setStyle({fillColor:'#ffe066',fillOpacity:0.5});}
 
-/* ===== ЗАВАНТАЖЕННЯ ===== */
+/* ЗАВАНТАЖЕННЯ */
 
 fetch('/polygons.json')
 .then(r=>r.json())
@@ -145,7 +136,7 @@ l.on('click',()=>selectLayer(l));
 });
 });
 
-/* ===== ДОДАВАННЯ ===== */
+/* ДОДАВАННЯ */
 
 const drawControl=new L.Draw.Polygon(map,{allowIntersection:false,shapeOptions:stylePolygon()});
 addPolygonBtn.onclick=()=>drawControl.enable();
@@ -159,10 +150,7 @@ l.feature={
 type:'Feature',
 properties:{
 Cadnum:`3523681200:${Date.now().toString().slice(-8)}`,
-Area:areaHa,
-purpose:'',
-owner:'',
-note:''
+Area:areaHa
 },
 geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}
 };
@@ -172,7 +160,7 @@ selectLayer(l);
 saveAll();
 });
 
-/* ===== ВИБІР ===== */
+/* ВИБІР */
 
 function selectLayer(l){
 activeLayer=l;
@@ -181,32 +169,21 @@ highlight(l);
 showInfo(l);
 }
 
-/* ===== ПАНЕЛЬ ===== */
+/* ПАНЕЛЬ */
 
 function showInfo(layer){
 const p=layer.feature.properties;
 let html='<table>';
-
 for(const k in p){
 html+=`
 <tr>
 <td>${k}</td>
-<td class="value" contenteditable="${k!=='Cadnum' && k!=='Area'}" data-key="${k}">
-${p[k]??''}
-</td>
+<td class="value">${p[k]??''}</td>
 </tr>`;
 }
-
 html+='</table>';
 infoContent.innerHTML=html;
 infoPanel.classList.add('visible');
-
-document.querySelectorAll('.value').forEach(td=>{
-td.onblur=()=>{
-layer.feature.properties[td.dataset.key]=td.innerText.trim();
-saveAll();
-};
-});
 }
 
 closeInfo.onclick=()=>{
@@ -215,17 +192,26 @@ editableLayer.eachLayer(l=>l.setStyle(stylePolygon()));
 activeLayer=null;
 };
 
-/* ===== РЕДАГУВАННЯ ВСІХ ===== */
+/* РЕДАГУВАННЯ ВЕРШИН */
 
 editPolygonBtn.onclick=()=>{
-if(!activeLayer)return;
+
+if(!activeLayer) return;
 
 if(!editMode){
-editableLayer.eachLayer(l=>l.editing.enable());
+
+editHandler=new L.EditToolbar.Edit(map,{
+featureGroup:editableLayer
+});
+
+editHandler.enable();
+
 editPolygonBtn.classList.add('active');
 editMode=true;
+
 }else{
-editableLayer.eachLayer(l=>l.editing.disable());
+
+editHandler.disable();
 
 if(activeLayer){
 const ll=activeLayer.getLatLngs()[0];
@@ -235,12 +221,13 @@ showInfo(activeLayer);
 }
 
 saveAll();
+
 editPolygonBtn.classList.remove('active');
 editMode=false;
 }
 };
 
-/* ===== ВИДАЛЕННЯ ===== */
+/* ВИДАЛЕННЯ */
 
 deletePolygonBtn.onclick=()=>{
 if(activeLayer && confirm('Видалити полігон?')){
@@ -251,7 +238,7 @@ saveAll();
 }
 };
 
-/* ===== RESET ===== */
+/* RESET */
 
 resetSearch.onclick=()=>{
 searchInput.value='';
@@ -260,7 +247,7 @@ infoPanel.classList.remove('visible');
 activeLayer=null;
 };
 
-/* ===== ЗБЕРЕЖЕННЯ ===== */
+/* ЗБЕРЕЖЕННЯ */
 
 function saveAll(){
 fetch('/polygons',{
