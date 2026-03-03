@@ -13,16 +13,15 @@
 html,body,#map{width:100%;height:100%;margin:0;}
 
 #infoPanel{
-position:absolute;top:15px;right:15px;width:360px;
+position:absolute;top:15px;right:15px;width:380px;
 background:#fff;padding:14px;border-radius:14px;
 box-shadow:0 10px 25px rgba(0,0,0,0.2);
 font-size:14px;z-index:1000;display:none;
 }
 #infoPanel.visible{display:block;}
-
 #infoHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 #infoContent table{width:100%;border-collapse:separate;border-spacing:0 6px;}
-#infoContent td:first-child{width:140px;font-weight:500;}
+#infoContent td:first-child{width:160px;font-weight:500;}
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
 td.value.active{background:#dbeafe;}
 
@@ -34,6 +33,17 @@ cursor:pointer;font-size:13px;
 button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
 button.active,.rowEditBtn.active{background:var(--btn-active);}
 
+.editBtn{
+background:#94a3b8;
+padding:4px 6px;
+display:flex;
+align-items:center;
+justify-content:center;
+}
+.editBtn:hover{background:#64748b;}
+.editBtn.active{background:#f59e0b;}
+.editBtn svg{pointer-events:none;}
+
 #searchControls,#editControl,#coordsControl,#layersControl{
 position:absolute;z-index:1000;
 }
@@ -43,7 +53,16 @@ position:absolute;z-index:1000;
 #layersControl{bottom:15px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
 
 #map.coords-mode, #map.coords-mode * { cursor: crosshair !important; }
+
 .copy-btn{margin-left:8px;padding:2px 6px;font-size:12px;}
+
+#confirmBox{
+position:absolute;top:50%;left:50%;
+transform:translate(-50%,-50%);
+background:#fff;padding:20px;border-radius:12px;
+box-shadow:0 10px 30px rgba(0,0,0,0.25);
+z-index:2000;display:none;width:300px;text-align:center;
+}
 </style>
 </head>
 
@@ -81,13 +100,23 @@ position:absolute;z-index:1000;
 <div id="infoContent"></div>
 </div>
 
+<div id="confirmBox">
+  <div style="margin-bottom:15px;font-weight:600;">
+    Видалити полігон?
+  </div>
+  <div style="display:flex;justify-content:center;gap:10px;">
+    <button id="confirmYes" style="background:#ef4444;">Так</button>
+    <button id="confirmNo">Скасувати</button>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://unpkg.com/leaflet-geometryutil@0.10.1/src/leaflet.geometryutil.js"></script>
 
 <script>
 
-const map=L.map('map').setView([48.670956, 31.122379],20);
+const map=L.map('map').setView([48.680987,31.086159],12);
 map.zoomControl.remove();
 L.control.zoom({position:'bottomright'}).addTo(map);
 
@@ -122,8 +151,7 @@ function generateCadnum(){
 let num;
 do{
 num=`3523681200:${Math.floor(Math.random()*100000000)
-.toString()
-.padStart(8,'0')}`;
+.toString().padStart(8,'0')}`;
 }while(isCadnumExists(num));
 return num;
 }
@@ -163,18 +191,27 @@ addPolygonBtn.onclick=()=>drawControl.enable();
 map.on(L.Draw.Event.CREATED,e=>{
 const l=e.layer;
 const ll=l.getLatLngs()[0];
+
+const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+
 l.feature={
 type:'Feature',
 properties:{
 Cadnum:generateCadnum(),
-Area:'',
-area_2:+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4),
+Area:areaHa,
 purpose:'',
-owner:'',
-note:''
+Qwner:'',
+local:'',
+Street:'',
+Build_num:'',
+Property:'',
+other_prop:'',
+tenant:'',
+Note:''
 },
 geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}
 };
+
 editableLayer.addLayer(l);
 selectLayer(l);
 saveAll();
@@ -189,44 +226,114 @@ highlight(l);
 showInfo(l);
 }
 
-/* ===== ПАНЕЛЬ ===== */
+/* ===== ПАНЕЛЬ АТРИБУТІВ ===== */
 
 function showInfo(layer){
+
+const fieldOrder=[
+"Cadnum","Area","purpose","Qwner","local","Street",
+"Build_num","Property","other_prop","tenant","Note"
+];
+
+const fieldNames={
+Cadnum:"Кадастровий номер",
+Area:"Площа (га)",
+purpose:"Цільове призначення",
+Qwner:"Власник/Землекористувач",
+local:"Населений пункт",
+Street:"Вулиця",
+Build_num:"Номер будівлі",
+Property:"Вид права користування",
+other_prop:"Інше право",
+tenant:"Правокористувач",
+Note:"Примітка"
+};
+
 const p=layer.feature.properties;
 let html='<table>';
-for(const k in p){
+
+fieldOrder.forEach(key=>{
+const value=p[key]??'';
+const editable= key!=="Cadnum" && key!=="Area";
+
 html+=`
 <tr>
-<td>${k}</td>
-<td class="value" contenteditable="${k!=='Cadnum'}" data-key="${k}">
-${p[k]??''}
+<td>${fieldNames[key]}</td>
+<td class="value" data-key="${key}">${value}</td>
+<td>
+${editable?`
+<button class="editBtn" data-key="${key}">
+<svg width="14" height="14" viewBox="0 0 24 24"
+fill="none" stroke="currentColor" stroke-width="2">
+<path d="M12 20h9"/>
+<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+</svg>
+</button>`:''}
 </td>
 </tr>`;
-}
+});
+
 html+='</table>';
 infoContent.innerHTML=html;
 infoPanel.classList.add('visible');
 
-document.querySelectorAll('.value').forEach(td=>{
-td.onblur=()=>{
-layer.feature.properties[td.dataset.key]=td.innerText.trim();
+let activeEditBtn=null;
+let activeEditTd=null;
+
+document.querySelectorAll('.editBtn').forEach(btn=>{
+btn.onclick=()=>{
+const key=btn.dataset.key;
+const td=document.querySelector(`td[data-key="${key}"]`);
+
+if(activeEditBtn===btn){
+td.contentEditable=false;
+td.classList.remove('active');
+btn.classList.remove('active');
+layer.feature.properties[key]=td.innerText.trim();
 saveAll();
+activeEditBtn=null;
+activeEditTd=null;
+return;
+}
+
+if(activeEditBtn){
+activeEditTd.contentEditable=false;
+activeEditTd.classList.remove('active');
+activeEditBtn.classList.remove('active');
+}
+
+td.contentEditable=true;
+td.focus();
+td.classList.add('active');
+btn.classList.add('active');
+activeEditBtn=btn;
+activeEditTd=td;
 };
 });
 }
-closeInfo.onclick=()=>infoPanel.classList.remove('visible');
 
-/* ===== РЕДАГУВАННЯ ===== */
+/* ===== ЗАКРИТТЯ ПАНЕЛІ ===== */
+
+closeInfo.onclick=()=>{
+infoPanel.classList.remove('visible');
+if(activeLayer){
+activeLayer.setStyle(stylePolygon());
+activeLayer=null;
+}
+};
+
+/* ===== РЕДАГУВАННЯ ГЕОМЕТРІЇ ===== */
 
 editPolygonBtn.onclick=()=>{
 if(!activeLayer)return;
+
 if(!activeLayer.editing.enabled()){
 activeLayer.editing.enable();
 }else{
 activeLayer.editing.disable();
 const ll=activeLayer.getLatLngs()[0];
-activeLayer.feature.properties.area_2=
-+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+activeLayer.feature.properties.Area=areaHa;
 showInfo(activeLayer);
 saveAll();
 }
@@ -234,16 +341,23 @@ saveAll();
 
 /* ===== ВИДАЛЕННЯ ===== */
 
+const confirmBox=document.getElementById('confirmBox');
 deletePolygonBtn.onclick=()=>{
+if(!activeLayer)return;
+confirmBox.style.display='block';
+};
+confirmYes.onclick=()=>{
 if(activeLayer){
 editableLayer.removeLayer(activeLayer);
-infoPanel.classList.remove('visible');
 activeLayer=null;
+infoPanel.classList.remove('visible');
 saveAll();
 }
+confirmBox.style.display='none';
 };
+confirmNo.onclick=()=>confirmBox.style.display='none';
 
-/* ===== ПОШУК + RESET ===== */
+/* ===== ПОШУК ===== */
 
 searchInput.oninput=e=>{
 const q=e.target.value.toLowerCase();
