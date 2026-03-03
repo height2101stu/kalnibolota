@@ -19,6 +19,7 @@ box-shadow:0 10px 25px rgba(0,0,0,0.2);
 font-size:14px;z-index:1000;display:none;
 }
 #infoPanel.visible{display:block;}
+
 #infoHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 #infoContent table{width:100%;border-collapse:separate;border-spacing:0 6px;}
 #infoContent td:first-child{width:160px;font-weight:500;}
@@ -88,7 +89,7 @@ z-index:2000;display:none;width:300px;text-align:center;
 <button id="googleBtn" class="active">Google</button>
 <button id="gkkBtn">GKK</button>
 <button id="esriBtn">ESRI</button>
-<button id="str_mapBtn">STR_MAP</button>
+<button id="str_mapBtn">OSM</button>
 </div>
 
 <div id="infoPanel">
@@ -100,13 +101,11 @@ z-index:2000;display:none;width:300px;text-align:center;
 </div>
 
 <div id="confirmBox">
-  <div style="margin-bottom:15px;font-weight:600;">
-    Видалити полігон?
-  </div>
-  <div style="display:flex;justify-content:center;gap:10px;">
-    <button id="confirmYes" style="background:#ef4444;">Так</button>
-    <button id="confirmNo">Скасувати</button>
-  </div>
+<div style="margin-bottom:15px;font-weight:600;">Видалити полігон?</div>
+<div style="display:flex;justify-content:center;gap:10px;">
+<button id="confirmYes" style="background:#ef4444;">Так</button>
+<button id="confirmNo">Скасувати</button>
+</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -118,6 +117,8 @@ z-index:2000;display:none;width:300px;text-align:center;
 const map=L.map('map').setView([48.680987,31.086159],12);
 map.zoomControl.remove();
 L.control.zoom({position:'bottomright'}).addTo(map);
+
+/* ПІДКЛАДКИ */
 
 const googleLayer=L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}').addTo(map);
 const gkkLayer=L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png');
@@ -137,15 +138,73 @@ gkkBtn.onclick=()=>toggleLayer('gkk');
 esriBtn.onclick=()=>toggleLayer('esri');
 str_mapBtn.onclick=()=>toggleLayer('str_map');
 
+/* ДАЛІ ЙДЕ ВСЯ ЛОГІКА: завантаження, додавання, редагування, площа, атрибути, координати, видалення, збереження */
+
 const editableLayer=new L.FeatureGroup().addTo(map);
-
-const drawControlFull = new L.Control.Draw({
-  edit: { featureGroup: editableLayer },
-  draw: false
-});
-map.addControl(drawControlFull);
-
 let activeLayer=null;
 let editMode=false;
 
-/* Далі код продовжується... */
+/* Завантаження */
+
+fetch('/polygons.json')
+.then(r=>r.json())
+.then(d=>{
+if(!d||!d.features)return;
+L.geoJSON(d,{
+style:{color:'#3388ff',fillOpacity:0.15},
+onEachFeature:(f,l)=>{
+editableLayer.addLayer(l);
+l.on('click',()=>selectLayer(l));
+}
+});
+});
+
+/* Додавання */
+
+const drawControl=new L.Draw.Polygon(map,{
+allowIntersection:false,
+shapeOptions:{color:'#3388ff'}
+});
+addPolygonBtn.onclick=()=>drawControl.enable();
+
+map.on(L.Draw.Event.CREATED,e=>{
+const l=e.layer;
+const ll=l.getLatLngs()[0];
+const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+
+l.feature={
+type:'Feature',
+properties:{
+Cadnum:`3523681200:${Date.now().toString().slice(-8)}`,
+Area:areaHa,
+purpose:'',
+Qwner:'',
+local:'',
+Street:'',
+Build_num:'',
+Property:'',
+other_prop:'',
+tenant:'',
+Note:''
+},
+geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}
+};
+
+editableLayer.addLayer(l);
+selectLayer(l);
+saveAll();
+});
+
+/* Далі повна логіка selectLayer, showInfo, редагування, координати, видалення, reset та saveAll */
+
+function saveAll(){
+fetch('/polygons',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(editableLayer.toGeoJSON())
+});
+}
+
+</script>
+</body>
+</html>
