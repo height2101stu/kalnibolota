@@ -20,8 +20,7 @@ html,body,#map{width:100%;height:100%;margin:0;}
 #infoContent td:first-child{width:140px;font-weight:500;}
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
 td.value.active{background:#dbeafe;}
-td button.rowEditBtn{margin-left:4px;vertical-align:middle;}
-button,.rowEditBtn{border:none;border-radius:6px;padding:6px 10px;background:var(--btn-base);color:#fff;cursor:pointer;transition:background 0.2s;font-size:13px;display:flex;align-items:center;justify-content:center;}
+button,.rowEditBtn{border:none;border-radius:6px;padding:6px 10px;background:var(--btn-base);color:#fff;cursor:pointer;font-size:13px;}
 button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
 button.active,.rowEditBtn.active{background:var(--btn-active);}
 #editControl,#searchControls{position:absolute;left:15px;z-index:1000;}
@@ -90,18 +89,26 @@ function stylePolygon(){ return { color:'#3388ff', weight:1.3, fillColor:'#3388f
 function highlightPolygon(l){ l.setStyle({ fillColor:'#ffe666', fillOpacity:0.45 }); }
 function resetPolygon(l){ l.setStyle(stylePolygon()); }
 
-/* Load polygons */
-fetch('/polygons.json').then(r=>r.json()).then(d=>{
-  L.geoJSON(d,{style:stylePolygon,onEachFeature:(f,l)=>{
-    editableLayer.addLayer(l);
-    l.on('click',()=>{
-      editableLayer.eachLayer(resetPolygon);
-      highlightPolygon(l);
-    });
-  }});
-});
+/* Attributes */
+const keyNames={
+  Cadnum:'Кадастровий номер',
+  Area:'Площа за документами (га)',
+  area_2:'Площа в натурі (га)',
+  purpose:'Цільове призначення',
+  Qwner:'Власник',
+  Num_Ovner:'К-сть власників',
+  tenant:'Землекористувач',
+  St_reg:'Дата реєстрації',
+  Street:'Вулиця',
+  Build_num:'№ будинку',
+  note:'Примітка'
+};
 
-/* Save all polygons to server */
+function generateCadnum(){
+  return `3523681200:${Math.floor(Math.random()*100000000).toString().padStart(8,'0')}`;
+}
+
+/* Save all polygons */
 function saveAll(){
   fetch('https://kalnibolota.onrender.com/polygons',{
     method:'POST',
