@@ -25,13 +25,13 @@ font-size:14px;z-index:1000;display:none;
 td.value{background:#f0f4ff;padding:6px 8px;border-radius:6px;}
 td.value.active{background:#dbeafe;}
 
-button,.rowEditBtn{
+button{
 border:none;border-radius:6px;padding:6px 10px;
 background:var(--btn-base);color:#fff;
 cursor:pointer;font-size:13px;
 }
-button:hover,.rowEditBtn:hover{background:var(--btn-hover);}
-button.active,.rowEditBtn.active{background:var(--btn-active);}
+button:hover{background:var(--btn-hover);}
+button.active{background:var(--btn-active);}
 
 .editBtn{
 background:#94a3b8;
@@ -42,7 +42,6 @@ justify-content:center;
 }
 .editBtn:hover{background:#64748b;}
 .editBtn.active{background:#f59e0b;}
-.editBtn svg{pointer-events:none;}
 
 #searchControls,#editControl,#coordsControl,#layersControl{
 position:absolute;z-index:1000;
@@ -120,8 +119,6 @@ const map=L.map('map').setView([48.680987,31.086159],12);
 map.zoomControl.remove();
 L.control.zoom({position:'bottomright'}).addTo(map);
 
-/* ===== ПІДКЛАДКИ ===== */
-
 const googleLayer=L.tileLayer('https://www.google.com/maps/vt?lyrs=s@189&x={x}&y={y}&z={z}').addTo(map);
 const gkkLayer=L.tileLayer('https://map50.gki.com.ua/api-user/rtile/carto_2240035321813140995/ua/{z}/{x}/{y}.png');
 const esriLayer=L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
@@ -140,312 +137,15 @@ gkkBtn.onclick=()=>toggleLayer('gkk');
 esriBtn.onclick=()=>toggleLayer('esri');
 str_mapBtn.onclick=()=>toggleLayer('str_map');
 
-/* ===== ДАНІ ===== */
-
 const editableLayer=new L.FeatureGroup().addTo(map);
+
+const drawControlFull = new L.Control.Draw({
+  edit: { featureGroup: editableLayer },
+  draw: false
+});
+map.addControl(drawControlFull);
+
 let activeLayer=null;
+let editMode=false;
 
-/* ===== КАДАСТРОВИЙ НОМЕР ===== */
-
-function generateCadnum(){
-let num;
-do{
-num=`3523681200:${Math.floor(Math.random()*100000000)
-.toString().padStart(8,'0')}`;
-}while(isCadnumExists(num));
-return num;
-}
-function isCadnumExists(num){
-let exists=false;
-editableLayer.eachLayer(l=>{
-if(l.feature?.properties?.Cadnum===num) exists=true;
-});
-return exists;
-}
-
-/* ===== СТИЛЬ ===== */
-
-function stylePolygon(){return{color:'#3388ff',fillColor:'#3388ff',fillOpacity:0.15};}
-function highlight(l){l.setStyle({fillColor:'#ffe066',fillOpacity:0.5});}
-
-/* ===== ЗАВАНТАЖЕННЯ ===== */
-
-fetch('/polygons.json')
-.then(r=>r.json())
-.then(d=>{
-if(!d||!d.features)return;
-L.geoJSON(d,{
-style:stylePolygon,
-onEachFeature:(f,l)=>{
-editableLayer.addLayer(l);
-l.on('click',()=>selectLayer(l));
-}
-});
-});
-
-/* ===== ДОДАВАННЯ ===== */
-
-const drawControl=new L.Draw.Polygon(map,{allowIntersection:false,shapeOptions:stylePolygon()});
-addPolygonBtn.onclick=()=>drawControl.enable();
-
-map.on(L.Draw.Event.CREATED,e=>{
-const l=e.layer;
-const ll=l.getLatLngs()[0];
-
-const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
-
-l.feature={
-type:'Feature',
-properties:{
-Cadnum:generateCadnum(),
-Area:areaHa,
-purpose:'',
-Qwner:'',
-local:'',
-Street:'',
-Build_num:'',
-Property:'',
-other_prop:'',
-tenant:'',
-Note:''
-},
-geometry:{type:'Polygon',coordinates:[ll.map(p=>[p.lng,p.lat])]}
-};
-
-editableLayer.addLayer(l);
-selectLayer(l);
-saveAll();
-});
-
-/* ===== ВИБІР ===== */
-
-function selectLayer(l){
-activeLayer=l;
-editableLayer.eachLayer(x=>x.setStyle(stylePolygon()));
-highlight(l);
-showInfo(l);
-}
-
-/* ===== ПАНЕЛЬ АТРИБУТІВ ===== */
-
-function showInfo(layer){
-
-const fieldOrder=[
-"Cadnum","Area","purpose","Qwner","local","Street",
-"Build_num","Property","other_prop","tenant","Note"
-];
-
-const fieldNames={
-Cadnum:"Кадастровий номер",
-Area:"Площа (га)",
-purpose:"Цільове призначення",
-Qwner:"Власник/Землекористувач",
-local:"Населений пункт",
-Street:"Вулиця",
-Build_num:"Номер будівлі",
-Property:"Вид права користування",
-other_prop:"Інше право",
-tenant:"Правокористувач",
-Note:"Примітка"
-};
-
-const p=layer.feature.properties;
-let html='<table>';
-
-fieldOrder.forEach(key=>{
-const value=p[key]??'';
-const editable= key!=="Cadnum" && key!=="Area";
-
-html+=`
-<tr>
-<td>${fieldNames[key]}</td>
-<td class="value" data-key="${key}">${value}</td>
-<td>
-${editable?`
-<button class="editBtn" data-key="${key}">
-<svg width="14" height="14" viewBox="0 0 24 24"
-fill="none" stroke="currentColor" stroke-width="2">
-<path d="M12 20h9"/>
-<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-</svg>
-</button>`:''}
-</td>
-</tr>`;
-});
-
-html+='</table>';
-infoContent.innerHTML=html;
-infoPanel.classList.add('visible');
-
-let activeEditBtn=null;
-let activeEditTd=null;
-
-document.querySelectorAll('.editBtn').forEach(btn=>{
-btn.onclick=()=>{
-const key=btn.dataset.key;
-const td=document.querySelector(`td[data-key="${key}"]`);
-
-if(activeEditBtn===btn){
-td.contentEditable=false;
-td.classList.remove('active');
-btn.classList.remove('active');
-layer.feature.properties[key]=td.innerText.trim();
-saveAll();
-activeEditBtn=null;
-activeEditTd=null;
-return;
-}
-
-if(activeEditBtn){
-activeEditTd.contentEditable=false;
-activeEditTd.classList.remove('active');
-activeEditBtn.classList.remove('active');
-}
-
-td.contentEditable=true;
-td.focus();
-td.classList.add('active');
-btn.classList.add('active');
-activeEditBtn=btn;
-activeEditTd=td;
-};
-});
-}
-
-/* ===== ЗАКРИТТЯ ПАНЕЛІ ===== */
-
-closeInfo.onclick=()=>{
-infoPanel.classList.remove('visible');
-if(activeLayer){
-activeLayer.setStyle(stylePolygon());
-activeLayer=null;
-}
-};
-
-/* ===== РЕДАГУВАННЯ ГЕОМЕТРІЇ ===== */
-
-let editMode = false;
-
-editPolygonBtn.onclick = ()=>{
-
-  if(!activeLayer) return;
-
-  if(!editMode){
-
-    activeLayer.editing.enable();
-    editPolygonBtn.classList.add('active');
-    editMode = true;
-
-  } else {
-
-    activeLayer.editing.disable();
-
-    const ll = activeLayer.getLatLngs()[0];
-    const areaHa = +(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
-
-    activeLayer.feature.properties.Area = areaHa;
-
-    showInfo(activeLayer);
-    saveAll();
-
-    editPolygonBtn.classList.remove('active');
-    editMode = false;
-  }
-};
-
-/* ===== ВИДАЛЕННЯ ===== */
-
-const confirmBox=document.getElementById('confirmBox');
-deletePolygonBtn.onclick=()=>{
-if(!activeLayer)return;
-confirmBox.style.display='block';
-};
-confirmYes.onclick=()=>{
-if(activeLayer){
-editableLayer.removeLayer(activeLayer);
-activeLayer=null;
-infoPanel.classList.remove('visible');
-saveAll();
-}
-confirmBox.style.display='none';
-};
-confirmNo.onclick=()=>confirmBox.style.display='none';
-
-/* ===== ПОШУК ===== */
-
-searchInput.oninput=e=>{
-const q=e.target.value.toLowerCase();
-editableLayer.eachLayer(l=>{
-const m=Object.values(l.feature.properties)
-.some(v=>v && v.toString().toLowerCase().includes(q));
-l.setStyle(m?{fillColor:'#22c55e',fillOpacity:0.6}:stylePolygon());
-});
-};
-
-resetSearch.onclick=()=>{
-searchInput.value='';
-editableLayer.eachLayer(l=>l.setStyle(stylePolygon()));
-infoPanel.classList.remove('visible');
-activeLayer=null;
-};
-
-/* ===== КООРДИНАТИ ===== */
-
-let coordsMode=false;
-let coordMarker=null;
-
-coordsModeBtn.onclick=()=>{
-coordsMode=!coordsMode;
-coordsModeBtn.classList.toggle('active',coordsMode);
-map.getContainer().classList.toggle('coords-mode',coordsMode);
-if(!coordsMode && coordMarker){
-map.removeLayer(coordMarker);
-coordMarker=null;
-}
-};
-
-map.on('click',e=>{
-if(!coordsMode)return;
-
-if(coordMarker) map.removeLayer(coordMarker);
-coordMarker=L.marker(e.latlng).addTo(map);
-
-const lat=e.latlng.lat.toFixed(6);
-const lng=e.latlng.lng.toFixed(6);
-const text=`${lat}, ${lng}`;
-
-infoContent.innerHTML=`
-<table>
-<tr>
-<td>Координати</td>
-<td class="value">
-${text}
-<button id="copyCoordsBtn" class="copy-btn">📋</button>
-</td>
-</tr>
-</table>
-`;
-
-infoPanel.classList.add('visible');
-
-document.getElementById('copyCoordsBtn').onclick=()=>{
-navigator.clipboard.writeText(text);
-const btn=document.getElementById('copyCoordsBtn');
-btn.innerText='✔';
-setTimeout(()=>btn.innerText='📋',1000);
-};
-});
-
-/* ===== ЗБЕРЕЖЕННЯ ===== */
-
-function saveAll(){
-fetch('/polygons',{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify(editableLayer.toGeoJSON())
-});
-}
-
-</script>
-</body>
-</html>
+/* Далі код продовжується... */
