@@ -324,19 +324,33 @@ activeLayer=null;
 
 /* ===== РЕДАГУВАННЯ ГЕОМЕТРІЇ ===== */
 
-editPolygonBtn.onclick=()=>{
-if(!activeLayer)return;
+let editMode = false;
 
-if(!activeLayer.editing.enabled()){
-activeLayer.editing.enable();
-}else{
-activeLayer.editing.disable();
-const ll=activeLayer.getLatLngs()[0];
-const areaHa=+(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
-activeLayer.feature.properties.Area=areaHa;
-showInfo(activeLayer);
-saveAll();
-}
+editPolygonBtn.onclick = ()=>{
+
+  if(!activeLayer) return;
+
+  if(!editMode){
+
+    activeLayer.editing.enable();
+    editPolygonBtn.classList.add('active');
+    editMode = true;
+
+  } else {
+
+    activeLayer.editing.disable();
+
+    const ll = activeLayer.getLatLngs()[0];
+    const areaHa = +(L.GeometryUtil.geodesicArea(ll)/10000).toFixed(4);
+
+    activeLayer.feature.properties.Area = areaHa;
+
+    showInfo(activeLayer);
+    saveAll();
+
+    editPolygonBtn.classList.remove('active');
+    editMode = false;
+  }
 };
 
 /* ===== ВИДАЛЕННЯ ===== */
